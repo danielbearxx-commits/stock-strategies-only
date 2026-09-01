@@ -40,7 +40,17 @@ from stock_strategies.market import apply_market_filter, get_market_state
 from stock_strategies.sheet import read_watchlist
 
 from api.services.ai_generator import generate_strategy_with_ai
-
+def _json_safe(value: Any):
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except (ValueError, TypeError):
+            pass
+    return value
 app = FastAPI(title="Stock Strategies API", version="1.0.0")
 
 # CORS：dev 期間給 localhost:3000 (Next.js)
@@ -182,7 +192,7 @@ def run(payload: RunIn):
     order = {"BUY": 0, "WATCH": 1, "SKIP": 2, "ERROR": 3}
     results.sort(key=lambda x: (order.get(x.get("action"), 4), -x.get("signal_score", 0)))
 
-    return {
+    return _json_safe({
         "strategy": {"id": strategy["id"], "name": strategy["name"]},
         "market": market_state,
         "downgraded": downgraded,
@@ -194,4 +204,4 @@ def run(payload: RunIn):
             "error": sum(1 for r in results if r.get("action") == "ERROR"),
         },
         "results": results,
-    }
+    })

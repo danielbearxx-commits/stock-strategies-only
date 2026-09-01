@@ -67,6 +67,34 @@ def append_signals(signals: list[dict]):
     ws.append_rows(rows)
 
 
+RESEARCH_HEADERS = [
+    "date", "stock_id", "name", "category", "price",
+    "short_score", "short_recommendation", "short_reasons",
+    "long_score", "long_recommendation", "long_reasons",
+    "ret5", "ret20", "ret60", "relative20", "vol_ratio",
+    "above_ma20", "above_ma60", "fundamental_score", "eps", "roe",
+    "category_score", "news_score", "news_label", "news_title",
+    "news_link", "news_published", "risk_notes",
+]
+
+
+def append_research(records: list[dict]):
+    """把獨立研究版結果寫入 Research 分頁。每次執行追加一批紀錄。"""
+    if not records:
+        return
+    sh = get_gsheet()
+    try:
+        ws = sh.worksheet("Research")
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title="Research", rows=2000, cols=len(RESEARCH_HEADERS))
+        ws.append_row(RESEARCH_HEADERS)
+
+    rows = []
+    for r in records:
+        rows.append([r.get(header, "") for header in RESEARCH_HEADERS])
+    ws.append_rows(rows)
+
+
 def _ensure_watchlist_headers(ws) -> list[str]:
     """讀第一列 headers，沒 headers 就建好 stock_id/name/enabled 三欄。"""
     values = ws.get_all_values()

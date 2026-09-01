@@ -218,6 +218,26 @@ uv run python premarket.py
 
 ---
 
+## 🔎 獨立研究版選股（新增）
+
+`research.py` 是和 `main.py` 分開的第二套研究工具。它讀取同一張 `Watchlist`，
+但不改寫既有 `Signals`，另外計算：
+
+- 短線研究分：大盤環境、5/20 日動能、均線、量能、相對大盤、類股強弱、近期新聞標題。
+- 中長線研究分：60 日趨勢、均線、波動度、相對大盤、類股強弱、EPS/ROE、近期新聞標題。
+- 新聞只抓 Google News RSS 的標題與連結，使用低權重關鍵字作為輔助；抓不到新聞時採中性，不把缺資料當利空。
+
+輸出會分成「優先研究／觀察／暫不列入」，不是買進指令。分數與新聞都要搭配原始資料、風險和自己的判斷。
+
+本機測試（會傳 3 則 Telegram 並新增 `Research` 分頁）：
+
+```powershell
+uv run python research.py
+```
+
+GitHub Actions 工作流程名稱是 `Independent Research Report`，預設每個交易日台灣時間約 15:00 執行；
+它沿用原本五個 Secrets，不需要新增 API 金鑰。`Research` 分頁會保留每次研究結果，方便和既有 `Signals` 對照。
+
 ## 這是什麼？
 
 一個 **單檔 Python 腳本**，幫你每天自動做三件事：

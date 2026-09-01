@@ -1,0 +1,35 @@
+name: Independent Research Report
+
+on:
+  schedule:
+    # Taiwan time 15:00 = UTC 07:00, after the daily signal job has finished.
+    - cron: "0 7 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  run-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: uv sync
+
+      - name: Run independent research report
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+        run: uv run python research.py
+
+
