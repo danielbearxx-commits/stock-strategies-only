@@ -45,7 +45,7 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
     for i, r in enumerate(long[:5], 1):
         msg1.append(
             f"{i}. {r['stock_id']} {r['name']} "
-            f"{r['long_score']}分｜{r['long_recommendation']}"
+            f"{r['long_score']}分｜{r['long_recommendation']}｜{r.get('consensus', '等待確認')}"
         )
     msg1 += ["", "_研究分數是篩選工具，不是買進指令；新聞需人工閱讀原文。_"]
 
@@ -54,8 +54,11 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
         msg2 += [
             f"*{r['stock_id']} {r['name']}*｜{r['short_score']}分｜{r['short_recommendation']}",
             f"5日 {r.get('ret5', 'N/A')}%｜20日 {r.get('ret20', 'N/A')}%｜"
-            f"量能 {r.get('vol_ratio', 'N/A')}倍｜相對大盤 {r.get('relative20', 'N/A')}%",
+            f"量能 {r.get('vol_ratio', 'N/A')}倍｜相對大盤 {r.get('relative20', 'N/A')}%｜"
+            f"RSI {r.get('rsi14', 'N/A')}",
             f"理由：{_clean(r.get('short_reasons', ''))}",
+            f"籌碼：法人分 {r.get('flow_score', 'N/A')}｜新聞 {r.get('news_trend', 'N/A')} "
+            f"({r.get('news_count', 0)}則)",
             f"風險：{_clean(r.get('risk_notes', ''))}",
         ]
         if r.get("news_title"):
@@ -69,12 +72,14 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
         msg3 += [
             f"*{r['stock_id']} {r['name']}*｜{r['long_score']}分｜{r['long_recommendation']}",
             f"60日 {r.get('ret60', 'N/A')}%｜EPS {r.get('eps', 'N/A')}｜"
-            f"ROE {r.get('roe', 'N/A')}%｜類股分 {r.get('category_score', 'N/A')}",
+            f"ROE {r.get('roe', 'N/A')}%｜營收年增 {r.get('revenue_yoy', 'N/A')}%｜"
+            f"類股分 {r.get('category_score', 'N/A')}",
             f"理由：{_clean(r.get('long_reasons', ''))}",
+            f"估值：PER {r.get('per', 'N/A')}｜PBR {r.get('pbr', 'N/A')}｜"
+            f"資料可信度 {r.get('data_confidence', 'N/A')}",
             f"風險：{_clean(r.get('risk_notes', ''))}",
             "",
         ]
 
     return ["\n".join(msg1), "\n".join(msg2), "\n".join(msg3)]
-
 

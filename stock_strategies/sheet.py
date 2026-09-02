@@ -74,7 +74,14 @@ RESEARCH_HEADERS = [
     "ret5", "ret20", "ret60", "relative20", "vol_ratio",
     "above_ma20", "above_ma60", "fundamental_score", "eps", "roe",
     "category_score", "news_score", "news_label", "news_title",
-    "news_link", "news_published", "risk_notes",
+    "news_link", "news_published", "news_count", "news_24h_count",
+    "news_sources", "news_trend", "news_positive_hits", "news_negative_hits",
+    "news_risk_flags", "rsi14", "atr_pct", "drawdown60", "breakout60",
+    "technical_quality", "flow_score", "flow_consistency", "foreign_flow_score",
+    "revenue_score", "revenue_yoy", "revenue_mom", "valuation_score", "per", "pbr",
+    "margin_score", "margin_ratio", "margin_change_pct", "ownership_score",
+    "foreign_ratio", "overall_score", "consensus", "data_confidence", "data_quality",
+    "risk_notes",
 ]
 
 
@@ -88,6 +95,12 @@ def append_research(records: list[dict]):
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title="Research", rows=2000, cols=len(RESEARCH_HEADERS))
         ws.append_row(RESEARCH_HEADERS)
+    else:
+        # 舊版 Research 已存在時，補上新欄位標題；既有歷史資料保留不動。
+        current_headers = ws.row_values(1)
+        if current_headers != RESEARCH_HEADERS:
+            ws.resize(cols=max(len(current_headers), len(RESEARCH_HEADERS)))
+            ws.update("A1", [RESEARCH_HEADERS])
 
     rows = []
     for r in records:
