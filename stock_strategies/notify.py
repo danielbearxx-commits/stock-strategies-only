@@ -403,6 +403,18 @@ def format_premarket(night: dict | None, signals: list[dict]) -> str:
     if actionable:
         latest_day = actionable[0].get("date", "")  # 最新在最前
         batch = [s for s in actionable if s.get("date", "") == latest_day]
+        # 同一天可能同時有手動執行與排程執行；Signals 會保留兩批歷史資料。
+        # 盤前只顯示每檔股票最新的一筆，不刪除 Sheet 歷史紀錄。
+        seen_stock_ids = set()
+        unique_batch = []
+        for signal in batch:
+            stock_id = str(signal.get("stock_id", "")).strip()
+            if stock_id and stock_id in seen_stock_ids:
+                continue
+            if stock_id:
+                seen_stock_ids.add(stock_id)
+            unique_batch.append(signal)
+        batch = unique_batch
         buys = [s for s in batch if str(s["action"]).upper() == "BUY"]
         watches = [s for s in batch if str(s["action"]).upper() == "WATCH"]
         lines.append(f"📋 *昨日訊號 × 夜盤對照* ({latest_day})")
