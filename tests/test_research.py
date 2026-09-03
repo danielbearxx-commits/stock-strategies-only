@@ -116,3 +116,40 @@ def test_advanced_snapshot_combines_flow_revenue_and_valuation(monkeypatch):
     assert result["per"] == 20.0
     assert result["foreign_ratio"] == 41.0
 
+
+def test_run_research_deep_analyzes_only_union_of_top_horizons(monkeypatch):
+    price = make_price_df(n=140, base=100)
+    index = pd.DataFrame({"close": [17000 + i * 20 for i in range(80)]})
+    calls = {"news": 0, "fundamental": 0, "advanced": 0}
+
+    monkeypatch.setattr(research, "get_index_history", lambda *args, **kwargs: index)
+    monkeypatch.setattr(research, "get_price_history", lambda *args, **kwargs: price)
+
+    def fake_news(*args, **kwargs):
+        calls["news"] += 1
+        return {"score": 50.0, "label": "中性", "title": "", "link": "",
+                "published": "", "status": "ok"}
+
+    monkeypatch.setattr(research, "fetch_news", fake_news)
+    monkeypatch.setattr(
+        research, "_fundamental_snapshot",
+        lambda *args, **kwargs: calls.__setitem__("fundamental", calls["fundamental"] + 1)
+        or {"score": 50.0, "eps": None, "roe": None, "available": False},
+    )
+    monkeypatch.setattr(
+        research, "_advanced_snapshot",
+        lambda *args, **kwargs: calls.__setitem__("advanced", calls["advanced"] + 1)
+        or research._empty_advanced(),
+    )
+
+    watchlist = [
+        {"stock_id": str(1000 + i), "name": f"股票{i}", "category": "AI"}
+        for i in range(20)
+    ]
+    _, results = research.run_research(watchlist)
+
+    assert len(results) == 20
+    assert sum(r["research_stage"] == "深入" for r in results) == 5
+    assert sum(r["research_stage"] == "初篩" for r in results) == 15
+    assert calls == {"news": 5, "fundamental": 5, "advanced": 5}
+    assert all("mid_score" in result for result in results)

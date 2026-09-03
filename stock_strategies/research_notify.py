@@ -20,13 +20,16 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
     today = datetime.now().strftime("%Y/%m/%d")
     valid = _ok(results)
     short = sorted(valid, key=lambda r: r.get("short_score", 0), reverse=True)
+    mid = sorted(valid, key=lambda r: r.get("mid_score", 0), reverse=True)
     long = sorted(valid, key=lambda r: r.get("long_score", 0), reverse=True)
+    deep = [r for r in valid if r.get("research_stage") == "深入"]
     priority_short = sum(r.get("short_recommendation") == "優先研究" for r in valid)
     priority_long = sum(r.get("long_recommendation") == "優先研究" for r in valid)
 
     msg1 = [
         f"📚 *獨立研究版選股* {today}",
         f"掃描 {len(results)} 檔 | 可分析 {len(valid)} 檔",
+        f"深入研究 {len(deep)} 檔 | 其餘為快速初篩",
         "",
         f"🌡️ 市場環境：*{_clean(market.get('regime', '資料不足'))}*",
         _clean(market.get("note", "市場資料不足")),
@@ -41,6 +44,12 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
             f"{i}. {r['stock_id']} {r['name']} "
             f"{r['short_score']}分｜{r['short_recommendation']}"
         )
+    msg1 += ["", "🔎 *中期前五名*"]
+    for i, r in enumerate(mid[:5], 1):
+        msg1.append(
+            f"{i}. {r['stock_id']} {r['name']} "
+            f"{r['mid_score']}分｜{r['mid_recommendation']}"
+        )
     msg1 += ["", "🔎 *中長線前五名*"]
     for i, r in enumerate(long[:5], 1):
         msg1.append(
@@ -50,9 +59,9 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
     msg1 += ["", "_研究分數是篩選工具，不是買進指令；新聞需人工閱讀原文。_"]
 
     msg2 = ["📈 *研究版｜短線詳細*", ""]
-    for r in short[:8]:
+    for r in [r for r in short if r.get("research_stage") == "深入"][:8]:
         msg2 += [
-            f"*{r['stock_id']} {r['name']}*｜{r['short_score']}分｜{r['short_recommendation']}",
+            f"*{r['stock_id']} {r['name']}*｜{r['short_score']}分｜{r['short_recommendation']}｜{r.get('research_stage', '')}",
             f"5日 {r.get('ret5', 'N/A')}%｜20日 {r.get('ret20', 'N/A')}%｜"
             f"量能 {r.get('vol_ratio', 'N/A')}倍｜相對大盤 {r.get('relative20', 'N/A')}%｜"
             f"RSI {r.get('rsi14', 'N/A')}",
@@ -67,8 +76,16 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
                 msg2.append(f"來源：{r['news_link']}")
         msg2.append("")
 
-    msg3 = ["📊 *研究版｜中長線詳細*", ""]
-    for r in long[:8]:
+    msg3 = ["📊 *研究版｜中期／中長線詳細*", ""]
+    msg3.append("【中期】")
+    for r in [r for r in mid if r.get("research_stage") == "深入"][:5]:
+        msg3 += [
+            f"*{r['stock_id']} {r['name']}*｜{r['mid_score']}分｜{r['mid_recommendation']}",
+            f"20日 {r.get('ret20', 'N/A')}%｜60日 {r.get('ret60', 'N/A')}%｜{_clean(r.get('mid_reasons', ''))}",
+            "",
+        ]
+    msg3.append("【中長線】")
+    for r in [r for r in long if r.get("research_stage") == "深入"][:8]:
         msg3 += [
             f"*{r['stock_id']} {r['name']}*｜{r['long_score']}分｜{r['long_recommendation']}",
             f"60日 {r.get('ret60', 'N/A')}%｜EPS {r.get('eps', 'N/A')}｜"
@@ -82,4 +99,3 @@ def format_research_messages(market: dict, results: list[dict]) -> list[str]:
         ]
 
     return ["\n".join(msg1), "\n".join(msg2), "\n".join(msg3)]
-

@@ -69,7 +69,8 @@ def append_signals(signals: list[dict]):
 
 RESEARCH_HEADERS = [
     "date", "stock_id", "name", "category", "price",
-    "short_score", "short_recommendation", "short_reasons",
+    "research_stage", "short_score", "short_recommendation", "short_reasons",
+    "mid_score", "mid_recommendation", "mid_reasons",
     "long_score", "long_recommendation", "long_reasons",
     "ret5", "ret20", "ret60", "relative20", "vol_ratio",
     "above_ma20", "above_ma60", "fundamental_score", "eps", "roe",

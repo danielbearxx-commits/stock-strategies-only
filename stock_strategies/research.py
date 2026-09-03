@@ -41,6 +41,10 @@ SEVERE_NEGATIVE_WORDS = (
     "虧損", "砍單", "停工", "舞弊", "下修", "訴訟", "減產", "警示", "跌停",
 )
 
+# 先用便宜的量價資料掃描全清單，再把各週期前幾名交給慢速資料源。
+# 這是為了避免免費 API 限流，也避免 GitHub Actions 超過 20 分鐘。
+DEEP_RESEARCH_LIMIT = 5
+
 
 def _clip(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return float(max(low, min(high, value)))
@@ -423,13 +427,20 @@ def analyze_stock(
     news: dict,
     fundamentals: dict,
     advanced: dict | None = None,
+    research_stage: str = "深入",
 ) -> dict:
     """分析單檔股票，回傳可直接寫入 Sheet/Telegram 的純 dict。"""
     if price is None or price.empty or "close" not in price.columns:
-        return {"stock_id": stock_id, "name": name, "category": category, "status": "資料不足"}
+        return {
+            "stock_id": stock_id, "name": name, "category": category,
+            "status": "資料不足", "research_stage": research_stage,
+        }
     close = pd.to_numeric(price["close"], errors="coerce").dropna().reset_index(drop=True)
     if len(close) < 60:
-        return {"stock_id": stock_id, "name": name, "category": category, "status": "資料不足"}
+        return {
+            "stock_id": stock_id, "name": name, "category": category,
+            "status": "資料不足", "research_stage": research_stage,
+        }
 
     ret5, ret20, ret60 = _return(close, 5), _return(close, 20), _return(close, 60)
     ma20 = float(close.rolling(20).mean().iloc[-1])
@@ -467,6 +478,14 @@ def analyze_stock(
         + advanced["revenue_score"] * 0.10 + advanced["valuation_score"] * 0.05
         + advanced["flow_score"] * 0.05 + news["score"] * 0.02
     )
+    mid_score = (
+        market["score"] * 0.08 + _scale(ret20, -0.25, 0.45) * 0.15
+        + _scale(ret60, -0.35, 0.80) * 0.15 + trend * 0.15
+        + stability * 0.08 + relative_score * 0.10
+        + category_score * 0.08 + fundamentals["score"] * 0.10
+        + advanced["revenue_score"] * 0.07 + advanced["flow_score"] * 0.03
+        + news["score"] * 0.01
+    )
 
     def recommendation(score: float) -> str:
         return "優先研究" if score >= 70 else "觀察" if score >= 55 else "暫不列入"
@@ -499,6 +518,15 @@ def analyze_stock(
         long_reasons.append("類股相對強")
     if advanced["revenue_yoy"] is not None and advanced["revenue_yoy"] > 0:
         long_reasons.append(f"月營收年增{advanced['revenue_yoy']:+.1f}%")
+    mid_reasons = []
+    if ret20 is not None and ret20 > 0.03:
+        mid_reasons.append(f"20日趨勢{ret20 * 100:+.1f}%")
+    if ret60 is not None and ret60 > 0.08:
+        mid_reasons.append(f"60日趨勢{ret60 * 100:+.1f}%")
+    if above20 and above60:
+        mid_reasons.append("月線與季線同向")
+    if advanced["revenue_yoy"] is not None and advanced["revenue_yoy"] > 0:
+        mid_reasons.append(f"營收年增{advanced['revenue_yoy']:+.1f}%")
 
     risks = []
     if market["score"] < 45:
@@ -583,12 +611,16 @@ def analyze_stock(
         "foreign_ratio": advanced["foreign_ratio"],
         "short_score": round(_clip(short_score), 1),
         "long_score": round(_clip(long_score), 1),
+        "mid_score": round(_clip(mid_score), 1),
         "short_recommendation": recommendation(short_score),
+        "mid_recommendation": recommendation(mid_score),
         "long_recommendation": recommendation(long_score),
+        "mid_reasons": "、".join(mid_reasons) or "中期趨勢尚未集中",
         "overall_score": overall_score,
         "consensus": consensus,
         "data_confidence": confidence,
         "data_quality": "完整" if confidence >= 0.75 else "部分資料" if confidence >= 0.5 else "資料偏少",
+        "research_stage": research_stage,
         "short_reasons": "、".join(short_reasons) or "動能訊號不明顯",
         "long_reasons": "、".join(long_reasons) or "中長線條件尚未集中",
         "risk_notes": "、".join(risks) or "目前無明顯警示",
@@ -596,11 +628,15 @@ def analyze_stock(
 
 
 def run_research(watchlist: list[dict]) -> tuple[dict, list[dict]]:
-    """執行完整研究版掃描；回傳 market 與結果。"""
+    """先初篩全清單，再深入研究各週期前幾名。
+
+    初篩只使用市場、量價、類股相對強弱，避免對全部股票呼叫慢速資料源。
+    短／中／長各取前五名後合併，最多深入 15 檔；其餘股票仍會保留初篩排名。
+    """
     index = get_index_history("TAIEX", start=(datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d"))
     market = market_snapshot(index)
     prepared = []
-    for row in watchlist:
+    for index_no, row in enumerate(watchlist, 1):
         sid = str(row.get("stock_id", "")).strip()
         name = str(row.get("name", "")).strip()
         category = str(row.get("category", "其他")).strip() or "其他"
@@ -614,6 +650,7 @@ def run_research(watchlist: list[dict]) -> tuple[dict, list[dict]]:
             ret20 = _return(close, 20)
         prepared.append({"row": row, "sid": sid, "name": name, "category": category,
                          "price": price, "ret20": ret20})
+        print(f"  → 量價初篩 {index_no}/{len(watchlist)} {sid} {name}", flush=True)
 
     by_category: dict[str, list[float]] = {}
     for item in prepared:
@@ -645,22 +682,66 @@ def run_research(watchlist: list[dict]) -> tuple[dict, list[dict]]:
         if ret20_values:
             market["watchlist_median_ret20"] = round(float(np.median(ret20_values) * 100), 2)
 
+    neutral_news = {
+        "score": 50.0, "label": "未深入抓取", "title": "", "link": "",
+        "published": "", "status": "screening_only",
+    }
+    neutral_fundamentals = {
+        "score": 50.0, "eps": None, "roe": None, "available": False,
+    }
+    neutral_advanced = _empty_advanced()
+
+    # 第一階段：全清單快速初篩，不抓新聞、財報、籌碼等慢速資料。
+    screening = []
+    for item in prepared:
+        screening.append(analyze_stock(
+            item["sid"], item["name"], item["category"], item["price"], market,
+            category_scores.get(item["category"], 50.0), neutral_news,
+            neutral_fundamentals, neutral_advanced, "初篩",
+        ))
+
+    valid_screening = [r for r in screening if r.get("status") == "ok"]
+    short_ranked = sorted(valid_screening, key=lambda r: r.get("short_score", 0), reverse=True)
+    mid_ranked = sorted(valid_screening, key=lambda r: r.get("mid_score", 0), reverse=True)
+    long_ranked = sorted(valid_screening, key=lambda r: r.get("long_score", 0), reverse=True)
+    deep_ids = {
+        r["stock_id"]
+        for ranking in (short_ranked, mid_ranked, long_ranked)
+        for r in ranking[:DEEP_RESEARCH_LIMIT]
+    }
+    print(
+        f"  → 各週期前{DEEP_RESEARCH_LIMIT}名聯集，深入研究 {len(deep_ids)} 檔",
+        flush=True,
+    )
+
     results = []
+    deep_done = 0
     for item in prepared:
         if item["price"].empty:
-            news = {
-                "score": 50.0, "label": "無法判讀", "title": "", "link": "",
-                "published": "", "status": "price_unavailable",
-            }
-            fundamentals = {"score": 50.0, "eps": None, "roe": None, "available": False}
-            advanced = _empty_advanced()
-        else:
+            news = {**neutral_news, "label": "無法判讀", "status": "price_unavailable"}
+            fundamentals = neutral_fundamentals
+            advanced = neutral_advanced
+            stage = "資料不足"
+        elif item["sid"] in deep_ids:
+            deep_done += 1
+            print(
+                f"  → 深入研究 {deep_done}/{len(deep_ids)} "
+                f"{item['sid']} {item['name']}",
+                flush=True,
+            )
             news = fetch_news(item["sid"], item["name"])
             fundamentals = _fundamental_snapshot(item["sid"])
             advanced = _advanced_snapshot(item["sid"])
+            stage = "深入"
+        else:
+            news = neutral_news
+            fundamentals = neutral_fundamentals
+            advanced = neutral_advanced
+            stage = "初篩"
         results.append(analyze_stock(
             item["sid"], item["name"], item["category"], item["price"], market,
             category_scores.get(item["category"], 50.0), news, fundamentals, advanced,
+            stage,
         ))
     results.sort(key=lambda r: (-(r.get("short_score") or 0), -(r.get("long_score") or 0)))
     return market, results
