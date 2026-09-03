@@ -2,8 +2,9 @@ name: Premarket Night Session
 
 on:
   schedule:
-    # 台灣時間 08:00 = UTC 00:00（夜盤 05:00 收完、開盤 09:00 前）
-    - cron: '0 0 * * 1-5'
+    # 提前三小時避開目前約三小時的排程延遲：台灣週一至週五約 08:00。
+    # 21:00 UTC 是台灣隔日 05:00，因此 UTC 星期需用週日到週四。
+    - cron: '0 21 * * 0-4'
   workflow_dispatch:  # 允許手動觸發測試
 
 jobs:
